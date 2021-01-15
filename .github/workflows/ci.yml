@@ -128,6 +128,49 @@ jobs:
     - name: Distcheck
       run: make distcheck DISTCHECK_CONFIGURE_FLAGS="--enable-werror"
 
+  build-ubuntu-latest-s390x-cross-gcc:
+    # ubuntu-20.04 is minimum version to build ncurses
+    runs-on: ubuntu-20.04
+    # Enable LTO, might trigger additional warnings on advanced inlining
+    env:
+      CFLAGS: -O3 -g -flto
+      LDFLAGS: -O3 -g -flto
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install Cross Compile Toolchain
+      run: sudo apt-get install gcc-s390x-linux-gnu bison flex wget
+    - name: Create Temporary Source and Build Directories
+      run: mkdir "${{runner.temp}}/s390x-src" "${{runner.temp}}/s390x-build"
+    - name: Build ncurses
+      working-directory: ${{runner.temp}}/s390x-src
+      env:
+        S390X_BUILD: ${{runner.temp}}/s390x-build
+      run: |
+        wget https://ftp.gnu.org/pub/gnu/ncurses/ncurses-6.2.tar.gz
+        tar xf ncurses-6.2.tar.gz
+        cd ncurses-6.2
+        ./configure --host="s390x-linux-gnu" --prefix="${S390X_BUILD}" CFLAGS="-g" LDFLAGS="-g" --without-cxx --without-cxx-binding --without-ada --without-manpages --without-progs --without-tack --without-tests --without-curses-h --without-pkg-config --without-shared --without-debug --without-develop --without-dlsym --without-gpm --without-sysmouse --enable-widec --with-default-terminfo-dir=/usr/share/terminfo --with-terminfo-dirs=/usr/share/terminfo:/lib/terminfo:/usr/local/share/terminfo --with-fallbacks="screen linux vt100 xterm"
+        make install
+    - name: Build lm-sensors
+      working-directory: ${{runner.temp}}/s390x-src
+      env:
+        S390X_BUILD: ${{runner.temp}}/s390x-build
+      run: |
+        wget https://github.com/lm-sensors/lm-sensors/archive/V3-6-0.tar.gz
+        tar xf V3-6-0.tar.gz
+        cd lm-sensors-3-6-0
+        make CC="s390x-linux-gnu-gcc" CFLAGS="-g" LDFLAGS="-g" DESTDIR="${S390X_BUILD}/lm-sensors" install
+    - name: Bootstrap
+      run: ./autogen.sh
+    - name: Configure
+      env:
+        S390X_BUILD: ${{runner.temp}}/s390x-build
+      run: |
+        export PATH=${S390X_BUILD}/bin:$PATH
+        ./configure --host="s390x-linux-gnu" CFLAGS="-I${S390X_BUILD}/lm-sensors/usr/local/include" LDFLAGS="-L${S390X_BUILD}/lm-sensors/usr/local/lib" PKG_CONFIG=false --enable-unicode --with-sensors --enable-werror
+    - name: Build
+      run: make -k
+
   whitespace_check:
     runs-on: ubuntu-latest
     steps:
